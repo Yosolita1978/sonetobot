@@ -2,7 +2,8 @@
 
 import { NextResponse } from 'next/server'
 import { testDatabaseConnection, countUnusedPoems, insertPoems } from '@/lib/supabase'
-import { testScraper, scrapePoems, debugScrapeHtml } from '@/lib/scraper'
+import { testScraper, scrapePoems } from '@/lib/scraper'
+import { testMastodonConnection, postPoem } from '@/lib/mastodon'
 import { NewPoem } from '@/types/poem'
 
 export async function GET() {
@@ -23,16 +24,35 @@ export async function GET() {
     // Test 3: Test scraper
     const scraperTest = await testScraper()
     
+    // Test 4: Test Mastodon connection
+    console.log('4. Testing Mastodon connection...')
+    const mastodonTest = await testMastodonConnection()
+    
+    if (!mastodonTest.success) {
+      console.log('⚠️ Mastodon test failed, but continuing with other tests')
+    } else {
+      console.log(`✅ Connected to Mastodon as @${mastodonTest.accountInfo?.username}`)
+    }
+    
     // Return simple results
     return NextResponse.json({
       success: true,
-      message: 'Tests completed',
+      message: scraperTest.success && mastodonTest.success 
+        ? 'All tests completed successfully! 🎉' 
+        : 'Some tests had issues - check details below',
       results: {
         database: '✅ Connected',
         unused_poems: poemCount,
         scraper: scraperTest.success ? '✅ Working' : '❌ Failed',
         scraper_poems_found: scraperTest.poemsFound || 0,
-        scraper_error: scraperTest.error || null
+        scraper_error: scraperTest.error || null,
+        mastodon: mastodonTest.success ? '✅ Connected' : '❌ Failed',
+        mastodon_account: mastodonTest.accountInfo?.username || null,
+        mastodon_error: mastodonTest.error || null,
+        environment_check: {
+          mastodon_token: process.env.MASTODON_ACCESS_TOKEN ? '✅ Set' : '❌ Missing',
+          mastodon_url: process.env.MASTODON_API_URL ? '✅ Set' : '❌ Missing'
+        }
       }
     })
     
@@ -50,17 +70,27 @@ export async function POST(request: Request) {
     const { action } = body
     
     switch (action) {
-      case 'debug_html':
-        console.log('🔍 Testing HTML fetch...')
+      case 'test_post_poem':
+        console.log('🧪 Testing poem posting to Mastodon...')
         
-        const htmlContent = await debugScrapeHtml()
+        const postResult = await postPoem()
+        
+        if (!postResult.success) {
+          return NextResponse.json({
+            success: false,
+            error: postResult.error
+          }, { status: 400 })
+        }
         
         return NextResponse.json({
           success: true,
-          message: 'HTML fetched successfully - check server console for details',
+          message: 'Poem posted successfully to Mastodon! 🎉',
           results: {
-            content_length: htmlContent.length,
-            first_100_chars: htmlContent.substring(0, 100)
+            posted_poem: {
+              title: postResult.poem?.title,
+              author: postResult.poem?.author,
+              mastodon_id: postResult.mastodonId
+            }
           }
         })
         
@@ -99,7 +129,7 @@ export async function POST(request: Request) {
       default:
         return NextResponse.json({
           success: false,
-          error: 'Unknown action. Available: debug_html, scrape_and_save'
+          error: 'Unknown action. Available: test_post_poem, scrape_and_save'
         }, { status: 400 })
     }
     
