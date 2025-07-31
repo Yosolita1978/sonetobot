@@ -1,150 +1,112 @@
-// app/api/test-db/route.ts
+// app/api/test_db/route.ts
 
 import { NextResponse } from 'next/server'
-import { 
-  testDatabaseConnection, 
-  insertPoem, 
-  getUnusedPoem, 
-  countUnusedPoems,
-  getAllPoems 
-} from '@/lib/supabase'
+import { testDatabaseConnection, countUnusedPoems, insertPoems } from '@/lib/supabase'
+import { testScraper, scrapePoems, debugScrapeHtml } from '@/lib/scraper'
 import { NewPoem } from '@/types/poem'
 
 export async function GET() {
   try {
-    console.log('🧪 Starting database tests...')
-    
     // Test 1: Database connection
-    console.log('1. Testing database connection...')
-    const connectionWorks = await testDatabaseConnection()
+    const dbWorks = await testDatabaseConnection()
     
-    if (!connectionWorks) {
+    if (!dbWorks) {
       return NextResponse.json({
         success: false,
         error: 'Database connection failed'
       }, { status: 500 })
     }
     
-    console.log('✅ Database connection successful')
+    // Test 2: Count poems
+    const poemCount = await countUnusedPoems()
     
-    // Test 2: Count existing poems
-    console.log('2. Counting existing poems...')
-    const unusedCount = await countUnusedPoems()
-    const allPoems = await getAllPoems()
+    // Test 3: Test scraper
+    const scraperTest = await testScraper()
     
-    console.log(`📊 Found ${allPoems.length} total poems, ${unusedCount} unused`)
-    
-    // Test 3: Insert a test poem (only if we don't have many)
-    let insertedPoem = null
-    if (allPoems.length < 5) {
-      console.log('3. Inserting test poem...')
-      
-      const testPoem: NewPoem = {
-        title: 'Test Poem - ' + new Date().toISOString(),
-        author: 'Test Bot',
-        excerpt: 'This is a test poem created by sonetobot during database testing. You can delete this later.',
-        scraped_date: new Date().toISOString(),
-        used: false
-      }
-      
-      insertedPoem = await insertPoem(testPoem)
-      console.log('✅ Test poem inserted with ID:', insertedPoem?.id)
-    } else {
-      console.log('3. Skipping test poem insertion (already have enough poems)')
-    }
-    
-    // Test 4: Get an unused poem
-    console.log('4. Getting an unused poem...')
-    const unusedPoem = await getUnusedPoem()
-    
-    // Test 5: Final count
-    const finalUnusedCount = await countUnusedPoems()
-    
-    // Return test results
+    // Return simple results
     return NextResponse.json({
       success: true,
-      message: 'All database tests passed! 🎉',
+      message: 'Tests completed',
       results: {
-        connection: connectionWorks,
-        total_poems: allPoems.length,
-        unused_poems_before: unusedCount,
-        unused_poems_after: finalUnusedCount,
-        test_poem_inserted: insertedPoem ? {
-          id: insertedPoem.id,
-          title: insertedPoem.title,
-          author: insertedPoem.author
-        } : null,
-        sample_unused_poem: unusedPoem ? {
-          id: unusedPoem.id,
-          title: unusedPoem.title,
-          author: unusedPoem.author,
-          used: unusedPoem.used
-        } : 'No unused poems found',
-        environment_check: {
-          supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Set' : '❌ Missing',
-          supabase_key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'
-        }
+        database: '✅ Connected',
+        unused_poems: poemCount,
+        scraper: scraperTest.success ? '✅ Working' : '❌ Failed',
+        scraper_poems_found: scraperTest.poemsFound || 0,
+        scraper_error: scraperTest.error || null
       }
     })
     
   } catch (error) {
-    console.error('❌ Database test failed:', error)
-    
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-      details: 'Check server console for full error details'
+      error: 'Test failed: ' + (error instanceof Error ? error.message : 'Unknown error')
     }, { status: 500 })
   }
 }
 
-// Optional: Add a POST method to test specific operations
 export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { action } = body
     
     switch (action) {
-      case 'insert_test_poem':
-        const testPoem: NewPoem = {
-          title: body.title || 'Manual Test Poem',
-          author: body.author || 'Test Author',
-          excerpt: body.excerpt || 'This is a manually inserted test poem.',
-          scraped_date: new Date().toISOString(),
-          used: false
-        }
+      case 'debug_html':
+        console.log('🔍 Testing HTML fetch...')
         
-        const inserted = await insertPoem(testPoem)
+        const htmlContent = await debugScrapeHtml()
         
         return NextResponse.json({
           success: true,
-          message: 'Test poem inserted successfully',
-          poem: inserted
+          message: 'HTML fetched successfully - check server console for details',
+          results: {
+            content_length: htmlContent.length,
+            first_100_chars: htmlContent.substring(0, 100)
+          }
         })
         
-      case 'count_poems':
-        const count = await countUnusedPoems()
-        const total = await getAllPoems()
+      case 'scrape_and_save':
+        console.log('🔍 Testing full scrape and save workflow...')
+        
+        const poems = await scrapePoems()
+        
+        if (!poems || poems.length === 0) {
+          return NextResponse.json({
+            success: false,
+            error: 'No poems found during scraping'
+          }, { status: 400 })
+        }
+        
+        // Take first 5 poems and save them
+        const newPoems: NewPoem[] = poems.slice(0, 5).map(poem => ({
+          title: poem.title,
+          author: poem.author,
+          excerpt: poem.excerpt,
+          scraped_date: new Date().toISOString(),
+          used: false
+        }))
+        
+        const savedCount = await insertPoems(newPoems)
         
         return NextResponse.json({
           success: true,
-          unused_count: count,
-          total_count: total.length
+          message: `Successfully scraped and saved ${savedCount} poems`,
+          results: {
+            scraped: poems.length,
+            saved: savedCount
+          }
         })
         
       default:
         return NextResponse.json({
           success: false,
-          error: 'Unknown action. Available actions: insert_test_poem, count_poems'
+          error: 'Unknown action. Available: debug_html, scrape_and_save'
         }, { status: 400 })
     }
     
   } catch (error) {
-    console.error('POST test error:', error)
-    
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: 'POST test failed: ' + (error instanceof Error ? error.message : 'Unknown error')
     }, { status: 500 })
   }
 }
