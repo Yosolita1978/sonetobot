@@ -131,8 +131,8 @@ export async function postPoem(): Promise<{
     }
     
     // Handle specific Mastodon API errors
-    if (typeof error === 'object' && error !== null && 'response' in error) {
-      const apiError = error as any
+    if (error && typeof error === 'object' && 'response' in error) {
+      const apiError = error as { response?: { status?: number; data?: { error?: string } } }
       if (apiError.response?.status === 401) {
         errorMessage = 'Mastodon authentication failed - check access token'
       } else if (apiError.response?.status === 422) {
@@ -154,7 +154,12 @@ export async function postPoem(): Promise<{
  */
 export async function testMastodonConnection(): Promise<{
   success: boolean
-  accountInfo?: any
+  accountInfo?: {
+    username: string
+    displayName: string
+    followersCount: number
+    statusesCount: number
+  }
   error?: string
 }> {
   try {
@@ -205,7 +210,11 @@ export async function getPostingStats(): Promise<{
   success: boolean
   stats?: {
     totalPosts: number
-    recentPosts: any[]
+    recentPosts: Array<{
+      id: string
+      content: string
+      createdAt: string
+    }>
   }
   error?: string
 }> {
