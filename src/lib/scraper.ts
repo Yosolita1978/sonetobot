@@ -33,23 +33,42 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
     
     console.log('🔍 Using step-by-step extraction approach...')
     
-    // Step 1: Extract all poem excerpts (the working approach)
+    // Step 1: Extract all poem excerpts (PRESERVING LINE BREAKS)
     const spanPattern = /<span[^>]*inline-block[^>]*>([\s\S]*?)<\/span>/gi
     const excerpts = []
     let spanMatch
     
     while ((spanMatch = spanPattern.exec(htmlContent)) !== null) {
+      // IMPORTANT: Process line breaks BEFORE removing other HTML
       const excerpt = spanMatch[1]
+        // First, convert <br> and <br/> tags to newlines
+        .replace(/<br\s*\/?>/gi, '\n')
+        // Convert </p><p> transitions to double newlines (stanza breaks)
+        .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+        // Convert other block-level endings to newlines
+        .replace(/<\/(div|p)>/gi, '\n')
+        // Now remove all remaining HTML tags
         .replace(/<[^>]*>/g, '')
+        // Decode HTML entities
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
-        .replace(/\s+/g, ' ')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        // Clean up whitespace more carefully
+        // Replace multiple spaces (but not newlines) with single space
+        .replace(/[^\S\n]+/g, ' ')
+        // Remove spaces at the beginning and end of lines
+        .replace(/^ +/gm, '')
+        .replace(/ +$/gm, '')
+        // Reduce multiple consecutive newlines to maximum of 2 (for stanza breaks)
+        .replace(/\n{3,}/g, '\n\n')
         .trim()
       
       if (excerpt.length > 50) {
         excerpts.push(excerpt)
+        console.log(`📝 Excerpt ${excerpts.length} (first 100 chars):\n${excerpt.substring(0, 100)}...`)
       }
     }
     
@@ -64,6 +83,8 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
       const title = titleMatch[1]
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
         .replace(/\s+/g, ' ')
         .trim()
       
@@ -83,6 +104,8 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
       const author = authorMatch[1]
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
         .replace(/\s+/g, ' ')
         .trim()
       
@@ -99,17 +122,46 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
     
     for (let i = 0; i < poemCount; i++) {
       const excerpt = excerpts[i]
-      const title = titles[i] || excerpt.split(' ').slice(0, 5).join(' ')
+      const title = titles[i] || excerpt.split('\n')[0].split(' ').slice(0, 5).join(' ')
       const author = authors[i] || 'Poeta Español'
+      
+      // For Mastodon's 500 char limit, we need to be smart about truncation
+      // Try to preserve complete verses/stanzas when truncating
+      let finalExcerpt = excerpt
+      if (excerpt.length > 350) {
+        // Try to find a good breaking point (end of a stanza or verse)
+        const truncated = excerpt.substring(0, 350)
+        const lastDoubleNewline = truncated.lastIndexOf('\n\n')
+        const lastSingleNewline = truncated.lastIndexOf('\n')
+        
+        if (lastDoubleNewline > 250) {
+          // Break at stanza if it's not too short
+          finalExcerpt = truncated.substring(0, lastDoubleNewline) + '...'
+        } else if (lastSingleNewline > 280) {
+          // Break at verse line if stanza break is too early
+          finalExcerpt = truncated.substring(0, lastSingleNewline) + '...'
+        } else {
+          // Last resort: break at sentence/clause
+          const lastPeriod = truncated.lastIndexOf('.')
+          const lastComma = truncated.lastIndexOf(',')
+          const lastBreak = Math.max(lastPeriod, lastComma)
+          
+          if (lastBreak > 250) {
+            finalExcerpt = truncated.substring(0, lastBreak + 1) + '...'
+          } else {
+            finalExcerpt = truncated + '...'
+          }
+        }
+      }
       
       poems.push({
         title: title.length > 80 ? title.substring(0, 77) + '...' : title,
         author: author,
-        // For Mastodon (500 chars), allow longer excerpts (up to 350 chars)
-        excerpt: excerpt.length > 350 ? excerpt.substring(0, 347) + '...' : excerpt
+        excerpt: finalExcerpt
       })
       
-      console.log(`✅ Poem ${i + 1}: "${title}" by ${author} (excerpt: ${excerpt.length} chars)`)
+      console.log(`✅ Poem ${i + 1}: "${title}" by ${author}`)
+      console.log(`   Line breaks preserved: ${finalExcerpt.split('\n').length} lines`)
     }
     
     console.log(`📖 Total poems found: ${poems.length}`)
@@ -120,7 +172,7 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
       return [{
         title: "Poema de Emergencia",
         author: "Bot de Poesía", 
-        excerpt: "En caso de que el scraping falle, aquí tienes un poema de emergencia."
+        excerpt: "En caso de que el scraping falle,\naquí tienes un poema de emergencia\npara mantener el bot funcionando."
       }]
     }
     
@@ -138,11 +190,11 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
       } : undefined
     })
     
-    // Return fallback on error
+    // Return fallback on error with line breaks
     return [{
       title: "Poema de Emergencia",
       author: "Bot de Poesía",
-      excerpt: "En caso de que el scraping falle, aquí tienes un poema de emergencia para mantener el bot funcionando."
+      excerpt: "En caso de que el scraping falle,\naquí tienes un poema de emergencia\npara mantener el bot funcionando\ncon versos separados correctamente."
     }]
   }
 }

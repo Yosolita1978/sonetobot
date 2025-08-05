@@ -34,33 +34,63 @@ function getMastodonClient(): MegalodonInterface {
 function formatPoemForPost(poem: Poem): string {
   const { title, author, excerpt } = poem
   
-  // Create the formatted post
+  // Create the formatted post with proper line breaks
   let post = `"${title}"\n\n`
   
-  // Add excerpt (limit length for Mastodon)
+  // Add excerpt (with line breaks preserved)
   let poemText = excerpt
   
-  // If excerpt is too long, truncate nicely
-  const maxExcerptLength = 350 // Leave room for title, author, hashtags
+  // Calculate available space for the poem
+  // Mastodon limit is 500, but we need space for title, author, and hashtags
+  const titleLength = title.length + 4 // quotes and newlines
+  const authorLength = author.length + 4 // dash, space, and newlines
+  const hashtagsLength = 50 // approximate hashtag length
+  const maxExcerptLength = 500 - titleLength - authorLength - hashtagsLength - 10 // buffer
+  
+  // If excerpt is too long, truncate intelligently while preserving structure
   if (poemText.length > maxExcerptLength) {
-    // Find a good breaking point (end of sentence or clause)
     const truncated = poemText.substring(0, maxExcerptLength)
+    
+    // Try to break at a stanza boundary (double newline)
+    const lastStanzaBreak = truncated.lastIndexOf('\n\n')
+    const lastLineBreak = truncated.lastIndexOf('\n')
     const lastPeriod = truncated.lastIndexOf('.')
     const lastComma = truncated.lastIndexOf(',')
-    const lastBreak = Math.max(lastPeriod, lastComma)
     
-    if (lastBreak > maxExcerptLength * 0.7) {
-      poemText = truncated.substring(0, lastBreak + 1) + '...'
+    // Prefer breaking at natural boundaries
+    if (lastStanzaBreak > maxExcerptLength * 0.6) {
+      // Break at stanza if it's not too short
+      poemText = truncated.substring(0, lastStanzaBreak).trim() + '...'
+    } else if (lastLineBreak > maxExcerptLength * 0.7) {
+      // Break at line end if stanza break is too early
+      poemText = truncated.substring(0, lastLineBreak).trim() + '...'
+    } else if (lastPeriod > maxExcerptLength * 0.7) {
+      // Break at sentence end
+      poemText = truncated.substring(0, lastPeriod + 1).trim() + '..'
+    } else if (lastComma > maxExcerptLength * 0.7) {
+      // Break at clause
+      poemText = truncated.substring(0, lastComma).trim() + '...'
     } else {
-      poemText = truncated + '...'
+      // Last resort - just truncate
+      poemText = truncated.trim() + '...'
     }
   }
   
+  // Add the poem text with preserved formatting
   post += poemText
+  
+  // Add author
   post += `\n\n— ${author}`
   
   // Add hashtags
   post += '\n\n#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura'
+  
+  // Log the formatted post for debugging
+  console.log('📝 Formatted post preview:')
+  console.log('---')
+  console.log(post)
+  console.log('---')
+  console.log(`📏 Total length: ${post.length} characters`)
   
   return post
 }
@@ -88,11 +118,28 @@ export async function postPoem(): Promise<{
     }
     
     console.log(`🎭 Preparing to post: "${poem.title}" by ${poem.author}`)
+    console.log(`📝 Poem has ${poem.excerpt.split('\n').length} lines`)
     
     // Format poem for Mastodon
-    const postContent = formatPoemForPost(poem)
+    let postContent = formatPoemForPost(poem)
     
     console.log('📝 Post content length:', postContent.length)
+    
+    // Validate length
+    if (postContent.length > 500) {
+      console.warn(`⚠️ Post content is ${postContent.length} chars, exceeding Mastodon's 500 limit!`)
+      // Try to trim it more aggressively
+      const lines = postContent.split('\n')
+      while (postContent.length > 500 && lines.length > 5) {
+        // Remove lines from the middle of the poem
+        lines.splice(-4, 1) // Remove a line before the author and hashtags
+        const trimmedContent = lines.join('\n')
+        if (trimmedContent.length <= 500) {
+          postContent = trimmedContent
+          break
+        }
+      }
+    }
     
     // Get Mastodon client
     const client = getMastodonClient()
