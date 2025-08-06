@@ -32,6 +32,10 @@ export default function AdminDashboard() {
       throw new Error(`Empty response from server. Status: ${response.status}`);
     }
     
+    if (text.startsWith('<!DOCTYPE html>')) {
+      throw new Error(`Got HTML instead of JSON. API route may not exist or authentication failed. Status: ${response.status}`);
+    }
+    
     try {
       return JSON.parse(text);
     } catch (parseError) {
@@ -47,6 +51,7 @@ export default function AdminDashboard() {
     setFormatTest(null)
     
     try {
+      //console.log('Making API call to /api/admin/test-db');
       const response = await fetch('/api/admin/test-db', {
         method: 'POST',
         headers: {
@@ -55,6 +60,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action: 'scrape_and_save' })
       })
       
+      //console.log('Response status:', response.status);
       const result = await safeJsonParse(response);
       
       if (!response.ok) {
@@ -84,6 +90,7 @@ export default function AdminDashboard() {
     setFixStatus(null)
     
     try {
+      //console.log('Making API call to /api/admin/test-db for fix_null_used');
       const response = await fetch('/api/admin/test-db', {
         method: 'POST',
         headers: {
@@ -92,6 +99,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action: 'fix_null_used' })
       })
       
+     // console.log('Fix response status:', response.status);
       const result = await safeJsonParse(response);
       
       if (!response.ok) {
@@ -122,6 +130,7 @@ export default function AdminDashboard() {
     setFormatTest(null)
     
     try {
+     //console.log('Making API call to /api/admin/post-poem');
       const response = await fetch('/api/admin/post-poem', {
         method: 'POST',
         headers: {
@@ -129,6 +138,7 @@ export default function AdminDashboard() {
         },
       })
       
+     //console.log('Post response status:', response.status);
       const result = await safeJsonParse(response);
       
       if (!response.ok) {
@@ -157,12 +167,14 @@ export default function AdminDashboard() {
     setIsProcessing(prev => ({ ...prev, format: true }));
     setFormatTest(null);
     try {
+      //console.log('Making API call to /api/admin/test-db for format test');
       const response = await fetch('/api/admin/test-db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'test_sonnet_format' })
       });
       
+      //console.log('Format test response status:', response.status);
       const result = await safeJsonParse(response);
       setFormatTest(result);
     } catch (err) {
@@ -265,7 +277,7 @@ export default function AdminDashboard() {
               <span className="flex items-center justify-center">
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 Scraping poems...
               </span>

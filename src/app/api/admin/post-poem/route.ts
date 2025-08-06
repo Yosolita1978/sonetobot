@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
   } catch (error) {
+    console.error('Post poem API error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'
