@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getRandomPoem, insertPoems } from '@/lib/supabase' // Use getRandomPoem
+import { getRandomPoem, insertPoems } from '@/lib/supabase'
 import { scrapePoems } from '@/lib/scraper'
 import { reformatAsSonnet } from '@/lib/mastodon'
 import { NewPoem } from '@/types/poem'
@@ -11,31 +11,54 @@ export async function POST(request: Request) {
     
     switch (action) {
       case 'test_sonnet_format':
-        console.log('🧪 Testing sonnet re-formatter on a random poem...');
-        const poem = await getRandomPoem(); // Use the new function here
-        if (!poem) {
-          return NextResponse.json({ success: false, error: 'No poems in DB to test formatting.' }, { status: 404 });
+        // Get a fresh poem from scraper instead of database
+        const freshPoems = await scrapePoems();
+        if (!freshPoems || freshPoems.length === 0) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'No poems found during fresh scraping for testing.' 
+          }, { status: 404 });
         }
+        
+        const freshPoem = freshPoems[0]; // Get the first freshly scraped poem
+        
+        // Format complete Mastodon post with title, author, hashtags
+        const mastodonPost = `«${freshPoem.title}»\n\n${freshPoem.excerpt}\n\n— ${freshPoem.author}\n\n#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura`;
+        
         return NextResponse.json({
-            success: true,
-            original: poem.excerpt,
-            formatted: reformatAsSonnet(poem.excerpt)
+          success: true,
+          original: freshPoem.excerpt,  // This should have line breaks from intelligent scraper
+          formatted: mastodonPost       // Complete Mastodon post with title + author + hashtags
         });
 
       case 'scrape_and_save':
-        // ... (this part remains the same)
         const poems = await scrapePoems();
         if (!poems || poems.length === 0) {
-          return NextResponse.json({ success: false, error: 'No poems found during scraping' }, { status: 400 });
+          return NextResponse.json({ 
+            success: false, 
+            error: 'No poems found during scraping' 
+          }, { status: 400 });
         }
-        const newPoems: NewPoem[] = poems.map(p => ({ ...p, scraped_date: new Date().toISOString() }));
+        const newPoems: NewPoem[] = poems.map(p => ({ 
+          ...p, 
+          scraped_date: new Date().toISOString() 
+        }));
         const savedCount = await insertPoems(newPoems);
-        return NextResponse.json({ success: true, message: `Scraped ${poems.length} and saved ${savedCount} new poems.` });
+        return NextResponse.json({ 
+          success: true, 
+          message: `Scraped ${poems.length} and saved ${savedCount} new poems.` 
+        });
         
       default:
-        return NextResponse.json({ success: false, error: `Unknown action: ${action}.` }, { status: 400 });
+        return NextResponse.json({ 
+          success: false, 
+          error: `Unknown action: ${action}.` 
+        }, { status: 400 });
     }
   } catch (error) {
-    return NextResponse.json({ success: false, error: 'API POST Error: ' + (error instanceof Error ? error.message : 'Unknown error')}, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: 'API POST Error: ' + (error instanceof Error ? error.message : 'Unknown error')
+    }, { status: 500 });
   }
 }
