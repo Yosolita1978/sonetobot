@@ -1,5 +1,5 @@
 import { Poem } from '@/types/poem'
-import { getRandomPoem } from '@/lib/supabase'
+import { getRandomUnusedPoem, markPoemAsUsed } from '@/lib/supabase'
 
 // This function formats poems for Mastodon display
 export function reformatAsSonnet(flatText: string): string {
@@ -26,29 +26,83 @@ export async function postPoem(): Promise<{
   poem?: Poem;
   mastodonId?: string;
 }> {
-  console.log('📖 Getting a random poem for console test...');
-  const poem = await getRandomPoem();
-  
-  if (!poem) { 
+  try {
+    // Get an unused poem from database
+    const poem = await getRandomUnusedPoem();
+    
+    if (!poem) { 
+      return { 
+        success: false, 
+        error: 'No unused poems available in the database.' 
+      }; 
+    }
+    
+    const postContent = formatPoemForPost(poem);
+
+    // Post to Mastodon
+    const mastodonResponse = await fetch(`${process.env.MASTODON_API_URL}/api/v1/statuses`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.MASTODON_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        status: postContent,
+        visibility: 'public'
+      })
+    });
+
+    if (!mastodonResponse.ok) {
+      const errorData = await mastodonResponse.text();
+      throw new Error(`Mastodon API error: ${mastodonResponse.status} ${errorData}`);
+    }
+
+    const mastodonData = await mastodonResponse.json();
+    
+    // Mark poem as used in database
+    await markPoemAsUsed(poem.id);
+
     return { 
-      success: false, 
-      error: 'No poems available in the database.' 
-    }; 
+      success: true, 
+      message: `Successfully posted "${poem.title}" by ${poem.author}`,
+      poem: poem,
+      mastodonId: mastodonData.id
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
   }
-  
-  const postContent = formatPoemForPost(poem);
-
-  console.log('\n--- CONSOLE-ONLY TEST ---');
-  console.log(postContent);
-  console.log('-------------------------\n');
-
-  return { 
-    success: true, 
-    message: 'Test successful! Check console for formatted output.',
-    poem: poem
-  };
 }
 
-export async function testMastodonConnection() {
-  return { success: true, message: 'Mastodon connection test not implemented' };
+export async function testMastodonConnection(): Promise<{
+  success: boolean;
+  error?: string;
+  message?: string;
+}> {
+  try {
+    const response = await fetch(`${process.env.MASTODON_API_URL}/api/v1/accounts/verify_credentials`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.MASTODON_ACCESS_TOKEN}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Mastodon API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      message: `Connected to Mastodon as @${data.username}`
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Connection failed'
+    };
+  }
 }

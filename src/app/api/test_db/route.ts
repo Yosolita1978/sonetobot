@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getRandomPoem, insertPoems } from '@/lib/supabase'
+import { getRandomPoem, insertPoems, fixNullUsedValues } from '@/lib/supabase'
 import { scrapePoems } from '@/lib/scraper'
 import { reformatAsSonnet } from '@/lib/mastodon'
 import { NewPoem } from '@/types/poem'
@@ -47,6 +47,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ 
           success: true, 
           message: `Scraped ${poems.length} and saved ${savedCount} new poems.` 
+        });
+
+      case 'fix_null_used':
+        const fixedCount = await fixNullUsedValues();
+        return NextResponse.json({
+          success: true,
+          message: `Fixed ${fixedCount} poems with null 'used' values, setting them to false.`
         });
         
       default:
