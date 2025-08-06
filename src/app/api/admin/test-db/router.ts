@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth-config'
 import { getRandomPoem, insertPoems, fixNullUsedValues } from '@/lib/supabase'
 import { scrapePoems } from '@/lib/scraper'
 import { reformatAsSonnet } from '@/lib/mastodon'
@@ -6,6 +8,15 @@ import { NewPoem } from '@/types/poem'
 
 export async function POST(request: Request) {
   try {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.username !== process.env.AUTHORIZED_GITHUB_USERNAME) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Unauthorized access' 
+      }, { status: 401 });
+    }
+
     const body = await request.json()
     const { action } = body
     
