@@ -39,7 +39,7 @@ export interface Poem {
   /**
    * API Response interfaces for consistent endpoint responses
    */
-  export interface ApiResponse<T = any> {
+  export interface ApiResponse<T = unknown> {
     success: boolean;
     data?: T;
     error?: string;

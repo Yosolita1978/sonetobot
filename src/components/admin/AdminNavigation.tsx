@@ -2,10 +2,12 @@
 
 import { signOut } from 'next-auth/react'
 import Link from 'next/link'
+import { Session } from "next-auth"
 
 interface AdminNavigationProps {
-  session: any
+  session: Session | null
 }
+
 
 export function AdminNavigation({ session }: AdminNavigationProps) {
   return (

@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server'
 
+type MastodonPostApi = {
+  id: string;
+  content: string;
+  url: string;
+  created_at: string;
+};
+
 export async function GET() {
   try {
     // Fetch recent posts from your Mastodon account
@@ -33,12 +40,11 @@ export async function GET() {
     const posts = await statusesResponse.json();
 
     // Format posts for public display
-    const formattedPosts = posts.map((post: any) => ({
+    const formattedPosts = posts.map((post: MastodonPostApi) => ({
       id: post.id,
-      content: decodeHtmlEntities(post.content.replace(/<[^>]*>/g, '')), // Strip HTML and decode entities
+      content: decodeHtmlEntities(post.content.replace(/<[^>]*>/g, '')),
       url: post.url,
       created_at: post.created_at,
-      // Extract poem title from content (assuming it's in quotes)
       poemTitle: extractPoemTitle(post.content)
     }));
 
