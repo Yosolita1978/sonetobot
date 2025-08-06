@@ -5,10 +5,11 @@ import { AuthSessionProvider } from '@/components/auth/SessionProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'Spanish Poetry Automation Platform',
   description: 'SonetoBot - Automated curation and sharing of Spanish poetry on Mastodon',
-}
+  icons: [{ rel: 'icon', url: '/logosonetobot.png', type: 'image/png' }],
+};
 
 export default function RootLayout({
   children,
