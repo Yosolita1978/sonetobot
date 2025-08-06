@@ -212,7 +212,7 @@ export default function AdminDashboard() {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-yellow-800">Database Maintenance</h3>
-            <p className="text-yellow-700">Fix any database inconsistencies (null 'used' values).</p>
+            <p className="text-yellow-700">Fix any database inconsistencies (null values).</p>
           </div>
         </div>
         
