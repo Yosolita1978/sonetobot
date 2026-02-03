@@ -1,0 +1,35 @@
+name: Daily Poem Post
+
+on:
+  schedule:
+    # Runs at 12:00 PM Colombia time (UTC-5) = 17:00 UTC
+    - cron: '0 17 * * *'
+  # Allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  post-poem:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Post poem to Mastodon
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.APP_URL }}/api/cron/post-poem" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+
+          # Extract HTTP status code (last line)
+          http_code=$(echo "$response" | tail -n 1)
+          # Extract response body (everything except last line)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          # Fail the job if status is not 200
+          if [ "$http_code" != "200" ]; then
+            echo "Error: Request failed with status $http_code"
+            exit 1
+          fi
+
+          echo "Successfully posted poem!"
