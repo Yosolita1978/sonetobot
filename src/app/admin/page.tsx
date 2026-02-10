@@ -22,7 +22,8 @@ export default function AdminDashboard() {
   const [postingStatus, setPostingStatus] = useState<ApiResponse | null>(null)
   const [formatTest, setFormatTest] = useState<FormatTestResponse | null>(null);
   const [fixStatus, setFixStatus] = useState<ApiResponse | null>(null);
-  const [isProcessing, setIsProcessing] = useState({ scrape: false, post: false, format: false, fix: false })
+  const [clearStatus, setClearStatus] = useState<ApiResponse | null>(null);
+  const [isProcessing, setIsProcessing] = useState({ scrape: false, post: false, format: false, fix: false, clear: false })
 
   // Helper function to safely parse JSON response
   const safeJsonParse = async (response: Response) => {
@@ -123,6 +124,41 @@ export default function AdminDashboard() {
     }
   }
 
+  // Clear unused poems function
+  const handleClearUnused = async () => {
+    if (!confirm('This will delete ALL unused poems from the database. Are you sure?')) return;
+    setIsProcessing(prev => ({ ...prev, clear: true }))
+    setClearStatus(null)
+
+    try {
+      const response = await fetch('/api/admin/test-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear_unused' })
+      })
+
+      const result = await safeJsonParse(response);
+
+      if (!response.ok) {
+        setClearStatus({
+          success: false,
+          error: result.error || result.message || `API error: ${response.status}`
+        })
+        return
+      }
+
+      setClearStatus(result)
+    } catch (err: unknown) {
+      console.error('Clear unused error:', err);
+      setClearStatus({
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to clear unused poems'
+      })
+    } finally {
+      setIsProcessing(prev => ({ ...prev, clear: false }))
+    }
+  }
+
   // Post to Mastodon function
   const handlePost = async () => {
     setIsProcessing(prev => ({ ...prev, post: true }))
@@ -216,19 +252,35 @@ export default function AdminDashboard() {
           </div>
         </div>
         
-        <button
-          onClick={handleFixNullValues}
-          disabled={isProcessing.fix}
-          className={`
-            py-3 px-6 rounded-xl font-semibold transition-all duration-200
-            ${isProcessing.fix 
-              ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-              : 'bg-yellow-600 text-white hover:bg-yellow-700'
-            }
-          `}
-        >
-          {isProcessing.fix ? 'Fixing...' : '🔧 Fix Database Issues'}
-        </button>
+        <div className="flex gap-4 flex-wrap">
+          <button
+            onClick={handleFixNullValues}
+            disabled={isProcessing.fix}
+            className={`
+              py-3 px-6 rounded-xl font-semibold transition-all duration-200
+              ${isProcessing.fix
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-yellow-600 text-white hover:bg-yellow-700'
+              }
+            `}
+          >
+            {isProcessing.fix ? 'Fixing...' : '🔧 Fix Database Issues'}
+          </button>
+
+          <button
+            onClick={handleClearUnused}
+            disabled={isProcessing.clear}
+            className={`
+              py-3 px-6 rounded-xl font-semibold transition-all duration-200
+              ${isProcessing.clear
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-red-600 text-white hover:bg-red-700'
+              }
+            `}
+          >
+            {isProcessing.clear ? 'Deleting...' : '🗑️ Clear Unused Poems'}
+          </button>
+        </div>
 
         {fixStatus && (
           <div className={`mt-4 p-3 rounded-xl ${fixStatus.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
@@ -241,6 +293,22 @@ export default function AdminDashboard() {
               <div className="text-red-800">
                 <span className="font-semibold">❌ Error:</span>
                 <p className="text-sm mt-1">{fixStatus.error}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {clearStatus && (
+          <div className={`mt-4 p-3 rounded-xl ${clearStatus.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+            {clearStatus.success ? (
+              <div className="text-green-800">
+                <span className="font-semibold">✅ Cleared!</span>
+                <p className="text-sm mt-1">{clearStatus.message}</p>
+              </div>
+            ) : (
+              <div className="text-red-800">
+                <span className="font-semibold">❌ Error:</span>
+                <p className="text-sm mt-1">{clearStatus.error}</p>
               </div>
             )}
           </div>
