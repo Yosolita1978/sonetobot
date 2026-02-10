@@ -219,3 +219,25 @@ export async function fixNullUsedValues(): Promise<number> {
     throw error
   }
 }
+
+/**
+ * Delete all unused poems (used = false or null)
+ * Used to clear badly-formatted poems before re-scraping
+ */
+export async function deleteUnusedPoems(): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('poems')
+      .delete()
+      .or('used.is.null,used.eq.false')
+      .select('id')
+
+    if (error) {
+      throw new Error(`Failed to delete unused poems: ${error.message}`)
+    }
+
+    return data?.length || 0
+  } catch (error) {
+    throw error
+  }
+}

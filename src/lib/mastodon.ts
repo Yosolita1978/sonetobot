@@ -1,22 +1,44 @@
 import { Poem } from '@/types/poem'
 import { getRandomUnusedPoem, markPoemAsUsed } from '@/lib/supabase'
 
-// This function formats poems for Mastodon display
-export function reformatAsSonnet(flatText: string): string {
-  if (!flatText) return '';
-  
-  // The text should already have line breaks from the scraper
-  // Just ensure it's clean and properly formatted
-  return flatText
-    .replace(/\n{3,}/g, '\n\n')  // Max 2 consecutive line breaks
+const MASTODON_MAX_CHARS = 500
+
+// Truncate poem excerpt to fit within the character budget, cutting at complete lines
+export function reformatAsSonnet(excerpt: string, maxChars: number): string {
+  if (!excerpt) return '';
+
+  // Clean up: max 2 consecutive line breaks, trim
+  let text = excerpt
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  if (text.length <= maxChars) return text;
+
+  // Truncate at the last complete line that fits
+  const lines = text.split('\n');
+  let result = '';
+
+  for (const line of lines) {
+    const candidate = result ? `${result}\n${line}` : line;
+    // Reserve 3 chars for the "..." suffix
+    if (candidate.length > maxChars - 3) break;
+    result = candidate;
+  }
+
+  return result ? `${result}\n...` : text.slice(0, maxChars - 3) + '...';
 }
 
 function formatPoemForPost(poem: Poem): string {
-  // Format with proper line breaks for Mastodon
-  const formattedExcerpt = reformatAsSonnet(poem.excerpt);
-  
-  return `«${poem.title}»\n\n${formattedExcerpt}\n\n— ${poem.author}\n\n#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura`;
+  const header = `«${poem.title}»\n\n`;
+  const footer = `\n\n— ${poem.author}\n\n#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura`;
+
+  // Calculate how much space the excerpt can use
+  const overhead = header.length + footer.length;
+  const excerptBudget = MASTODON_MAX_CHARS - overhead;
+
+  const formattedExcerpt = reformatAsSonnet(poem.excerpt, excerptBudget);
+
+  return `${header}${formattedExcerpt}${footer}`;
 }
 
 export async function postPoem(): Promise<{
@@ -29,14 +51,14 @@ export async function postPoem(): Promise<{
   try {
     // Get an unused poem from database
     const poem = await getRandomUnusedPoem();
-    
-    if (!poem) { 
-      return { 
-        success: false, 
-        error: 'No unused poems available in the database.' 
-      }; 
+
+    if (!poem) {
+      return {
+        success: false,
+        error: 'No unused poems available in the database.'
+      };
     }
-    
+
     const postContent = formatPoemForPost(poem);
 
     // Post to Mastodon
@@ -58,12 +80,12 @@ export async function postPoem(): Promise<{
     }
 
     const mastodonData = await mastodonResponse.json();
-    
+
     // Mark poem as used in database
     await markPoemAsUsed(poem.id);
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: `Successfully posted "${poem.title}" by ${poem.author}`,
       poem: poem,
       mastodonId: mastodonData.id

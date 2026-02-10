@@ -2,124 +2,183 @@ import axios from 'axios'
 import he from 'he'
 import { ScrapedPoem } from '@/types/poem'
 
-// Keep this for titles and authors
+const BASE_URL = 'https://www.palabravirtual.com'
+const MAX_POEMS_PER_SCRAPE = 15
+const REQUEST_DELAY_MS = 300
+
+// Clean flat text (for titles and authors only)
 function cleanRawText(rawHtml: string): string {
   if (!rawHtml) return ''
   const text = rawHtml.replace(/<[^>]*>/g, '');
   const decoded = he.decode(text);
-  return decoded.replace(/\s+/g, ' ').trim(); 
+  return decoded.replace(/\s+/g, ' ').trim();
 }
 
-// Add intelligent line breaks to flat poetry text
-function addIntelligentLineBreaks(flatText: string): string {
-  if (!flatText) return '';
-  
-  // Clean up the text first
-  let text = flatText.replace(/\s+/g, ' ').trim();
-  
-  // Spanish poetry line break patterns
-  const lineBreakPatterns = [
-    // Common Spanish poetry sentence endings that should start new lines
-    { pattern: /(\w+[aeiouáéíóú][rn])\s+([A-ZÁÉÍÓÚÑ])/g, name: 'vowel-r/n + capital' },
-    { pattern: /([.!?])\s+([A-ZÁÉÍÓÚÑ])/g, name: 'sentence end + capital' },
-    { pattern: /(día|noche|luz|sol|luna|amor|corazón|alma|vida|muerte|tiempo|mano|ojos|agua|tierra|cielo|viento)\s+([A-ZÁÉÍÓÚÑ])/gi, name: 'poetry nouns + capital' },
-    { pattern: /([,;:])\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[a-záéíóúñ]+)/g, name: 'punctuation + two words' },
-  ];
-  
-  // Apply patterns to add line breaks
-  lineBreakPatterns.forEach(({pattern, name}) => {
-    text = text.replace(pattern, '$1\n$2');
-  });
-  
-  // Handle conjunctions separately to preserve spaces
-  const conjunctionPattern = /(\w+[aeiouáéíóú])\s+(como|que|cuando|donde|mientras|aunque|si|hasta|desde|para|por|con|sin|entre|sobre|bajo)\s/gi;
-  text = text.replace(conjunctionPattern, '$1\n$2 ');  // Note the space after $2
-  
-  // Add stanza breaks (double line breaks) in strategic places
-  const stanzaPatterns = [
-    { pattern: /(\w+[.!?])\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[a-záéíóúñ]+\s+[a-záéíóúñ]+)/g, name: 'sentence end + 3 words' },
-    { pattern: /(amor|muerte|tiempo|noche|día|corazón|alma)\s*[.!?]\s*([A-ZÁÉÍÓÚÑ])/gi, name: 'key words + sentence end' },
-  ];
-  
-  stanzaPatterns.forEach(({pattern, name}) => {
-    text = text.replace(pattern, '$1\n\n$2');
-  });
-  
-  // Clean up multiple consecutive line breaks
+// Convert poem HTML to text preserving line breaks from <br> tags
+function cleanPoemHtml(html: string): string {
+  if (!html) return ''
+
+  let text = html
+
+  // The HTML source has patterns like: text<br />\n (br tag + source newline)
+  // Replace <br> followed by optional whitespace/newline with a single \n
+  text = text.replace(/<br\s*\/?>\s*\n?/gi, '\n')
+
+  // Strip remaining HTML tags
+  text = text.replace(/<[^>]*>/g, '')
+
+  // Decode HTML entities
+  text = he.decode(text)
+
+  // Normalize spaces on each line (but preserve newlines)
   text = text
-    .replace(/\n{3,}/g, '\n\n')  // Max 2 line breaks
-    .replace(/\n\s+/g, '\n')     // Remove spaces after line breaks
-    .trim();
-  
-  return text;
+    .split('\n')
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .join('\n')
+
+  // Collapse 3+ consecutive newlines to double (stanza break)
+  text = text.replace(/\n{3,}/g, '\n\n')
+
+  // Remove leading/trailing empty lines
+  text = text.trim()
+
+  return text
+}
+
+// Strip source attribution lines from the end of poem text
+// e.g. "De: Gualbet dans le rêve des autres..." or "Poema proporcionado por..."
+function stripAttribution(text: string): string {
+  const lines = text.split('\n')
+
+  // Walk backwards and remove attribution lines
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim()
+    if (
+      last === '' ||
+      /^De:\s/i.test(last) ||
+      /^Poema\s+proporcionado/i.test(last) ||
+      /^Fuente:/i.test(last) ||
+      /^Tomado\s+de/i.test(last) ||
+      /^\/.*/i.test(last)  // lines starting with / (bilingual title continuations)
+    ) {
+      lines.pop()
+    } else {
+      break
+    }
+  }
+
+  return lines.join('\n').trim()
+}
+
+// Small delay helper for rate limiting
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Discover poem links from the listing page
+async function discoverPoemLinks(): Promise<Array<{ url: string; title: string; author: string }>> {
+  const response = await axios.get(`${BASE_URL}/index.php?ir=select_texto.php`, {
+    timeout: 20000,
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SonetoBot/1.0)' }
+  })
+
+  const html: string = response.data
+  const poems: Array<{ url: string; title: string; author: string }> = []
+
+  // Extract title links: <a class="Conta" href="index.php?ir=ver_texto.php&pid=...&t=...&p=Author+Name">Title</a>
+  const linkPattern = /<a[^>]*class="Conta"[^>]*href="(index\.php\?ir=ver_texto\.php[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi
+  const links: Array<{ href: string; title: string }> = []
+  let linkMatch
+  while ((linkMatch = linkPattern.exec(html)) !== null) {
+    const href = linkMatch[1]
+    const title = cleanRawText(linkMatch[2])
+    if (title.length > 1 && !title.includes('►')) {
+      links.push({ href, title })
+    }
+  }
+
+  // Extract author from the URL's p= parameter
+  for (const link of links) {
+    const authorMatch = link.href.match(/[&?]p=([^&]+)/)
+    if (authorMatch) {
+      const author = decodeURIComponent(authorMatch[1].replace(/\+/g, ' '))
+      poems.push({
+        url: `${BASE_URL}/${link.href}`,
+        title: link.title,
+        author
+      })
+    }
+  }
+
+  return poems
+}
+
+// Fetch a single poem's text from its individual page
+async function fetchPoemText(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get(url, {
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SonetoBot/1.0)' }
+    })
+
+    const html: string = response.data
+
+    // Extract poem content from <p class="ContTextod"...>...</p>
+    const poemMatch = html.match(/<p\s+class="ContTextod"[^>]*>([\s\S]*?)<\/p>/i)
+    if (!poemMatch) return null
+
+    const poemText = cleanPoemHtml(poemMatch[1])
+    const cleaned = stripAttribution(poemText)
+
+    return cleaned.length > 20 ? cleaned : null
+  } catch (error) {
+    console.error(`Failed to fetch poem from ${url}:`, error)
+    return null
+  }
 }
 
 export async function scrapePoems(): Promise<ScrapedPoem[]> {
   try {
-    const response = await axios.get('https://www.palabravirtual.com/index.php?ir=select_texto.php', {
-      timeout: 20000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SonetoBot/1.0)' }
-    });
-    
-    const poems: ScrapedPoem[] = [];
-    const htmlContent = response.data;
+    // Phase A: Discover poem links from listing page
+    const poemLinks = await discoverPoemLinks()
 
-    // Use intelligent line break detection
-    const spanPattern = /<span[^>]*inline-block[^>]*>([\s\S]*?)<\/span>/gi;
-    const excerpts: string[] = [];
-    let spanMatch;
-    while ((spanMatch = spanPattern.exec(htmlContent)) !== null) {
-      const rawExcerpt = cleanRawText(spanMatch[1]); // Clean HTML first
-      const structuredExcerpt = addIntelligentLineBreaks(rawExcerpt); // Then add line breaks
-      
-      if (structuredExcerpt.length > 20) { 
-        excerpts.push(structuredExcerpt); 
+    if (poemLinks.length === 0) {
+      console.error('No poem links found on listing page')
+      return []
+    }
+
+    // Shuffle and limit to avoid scraping too many pages
+    const shuffled = poemLinks.sort(() => Math.random() - 0.5)
+    const selected = shuffled.slice(0, MAX_POEMS_PER_SCRAPE)
+
+    // Phase B: Fetch each poem's individual page
+    const poems: ScrapedPoem[] = []
+
+    for (const link of selected) {
+      const excerpt = await fetchPoemText(link.url)
+
+      if (excerpt) {
+        poems.push({
+          title: link.title,
+          author: link.author,
+          excerpt
+        })
       }
+
+      // Rate limit: wait between requests
+      await delay(REQUEST_DELAY_MS)
     }
 
-    // Extract titles
-    const titlePattern = /<a[^>]*class="Conta"[^>]*href="[^"]*ver_texto[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
-    const titles: string[] = [];
-    let titleMatch;
-    while ((titleMatch = titlePattern.exec(htmlContent)) !== null) {
-      const cleanedTitle = cleanRawText(titleMatch[1]);
-      if (cleanedTitle.length > 1 && !cleanedTitle.includes('►')) { 
-        titles.push(cleanedTitle); 
-      }
-    }
-
-    // Extract authors
-    const authorPattern = /<a[^>]*class="Conta"[^>]*href="[^"]*critzt[^"]*"[^>]*>\s*<b>\s*([^<]+)\s*<\/b><\/a>/gi;
-    const authors: string[] = [];
-    let authorMatch;
-    while ((authorMatch = authorPattern.exec(htmlContent)) !== null) {
-      const author = he.decode(authorMatch[1]).replace(/\s+/g, ' ').trim();
-      if (author.length > 3) { 
-        authors.push(author); 
-      }
-    }
-
-    const poemCount = Math.min(excerpts.length, titles.length, authors.length);
-    
-    for (let i = 0; i < poemCount; i++) {
-        poems.push({ 
-          title: titles[i], 
-          author: authors[i], 
-          excerpt: excerpts[i]
-        });
-    }
-
-    return poems;
-    
+    return poems
   } catch (error: unknown) {
-    console.error('❌ Scraping error:', error);
-    return [];
+    console.error('Scraping error:', error)
+    return []
   }
 }
 
 export async function testScraper() {
   try {
-    const poems = await scrapePoems();
+    const poems = await scrapePoems()
     return {
       success: poems.length > 0,
       poemsFound: poems.length,
