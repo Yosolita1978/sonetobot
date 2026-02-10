@@ -8,7 +8,7 @@ export function reformatAsSonnet(excerpt: string, maxChars: number): string {
   if (!excerpt) return '';
 
   // Clean up: max 2 consecutive line breaks, trim
-  let text = excerpt
+  const text = excerpt
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 

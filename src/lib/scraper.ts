@@ -184,7 +184,7 @@ export async function testScraper() {
       poemsFound: poems.length,
       samplePoem: poems.length > 0 ? poems[0] : null
     }
-  } catch (err) {
+  } catch {
     return { success: false, poemsFound: 0 }
   }
 }
