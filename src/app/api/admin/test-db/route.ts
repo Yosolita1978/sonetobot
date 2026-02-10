@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth-config'
-import { getRandomPoem, insertPoems, fixNullUsedValues, deleteUnusedPoems } from '@/lib/supabase'
+import { getRandomPoem, insertPoems, deleteUnusedPoems } from '@/lib/supabase'
 import { scrapePoems } from '@/lib/scraper'
 import { reformatAsSonnet } from '@/lib/mastodon'
 import { NewPoem } from '@/types/poem'
@@ -70,13 +70,6 @@ export async function POST(request: Request) {
         return NextResponse.json({
           success: true,
           message: `Deleted ${deletedCount} unused poems from the database.`
-        });
-
-      case 'fix_null_used':
-        const fixedCount = await fixNullUsedValues();
-        return NextResponse.json({
-          success: true,
-          message: `Fixed ${fixedCount} poems with null 'used' values, setting them to false.`
         });
 
       default:

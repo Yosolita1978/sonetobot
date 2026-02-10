@@ -21,9 +21,8 @@ export default function AdminDashboard() {
   const [scrapingStatus, setScrapingStatus] = useState<ApiResponse | null>(null)
   const [postingStatus, setPostingStatus] = useState<ApiResponse | null>(null)
   const [formatTest, setFormatTest] = useState<FormatTestResponse | null>(null);
-  const [fixStatus, setFixStatus] = useState<ApiResponse | null>(null);
   const [clearStatus, setClearStatus] = useState<ApiResponse | null>(null);
-  const [isProcessing, setIsProcessing] = useState({ scrape: false, post: false, format: false, fix: false, clear: false })
+  const [isProcessing, setIsProcessing] = useState({ scrape: false, post: false, format: false, clear: false })
 
   // Helper function to safely parse JSON response
   const safeJsonParse = async (response: Response) => {
@@ -82,45 +81,6 @@ export default function AdminDashboard() {
       })
     } finally {
       setIsProcessing(prev => ({ ...prev, scrape: false }))
-    }
-  }
-
-  // Fix null used values function
-  const handleFixNullValues = async () => {
-    setIsProcessing(prev => ({ ...prev, fix: true }))
-    setFixStatus(null)
-    
-    try {
-      //console.log('Making API call to /api/admin/test-db for fix_null_used');
-      const response = await fetch('/api/admin/test-db', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'fix_null_used' })
-      })
-      
-     // console.log('Fix response status:', response.status);
-      const result = await safeJsonParse(response);
-      
-      if (!response.ok) {
-        setFixStatus({
-          success: false,
-          error: result.error || result.message || `API error: ${response.status}`
-        })
-        return
-      }
-      
-      setFixStatus(result)
-      
-    } catch (err: unknown) {
-      console.error('Fix null values error:', err);
-      setFixStatus({
-        success: false,
-        error: err instanceof Error ? err.message : 'Failed to fix null values'
-      })
-    } finally {
-      setIsProcessing(prev => ({ ...prev, fix: false }))
     }
   }
 
@@ -248,55 +208,23 @@ export default function AdminDashboard() {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-yellow-800">Database Maintenance</h3>
-            <p className="text-yellow-700">Fix any database inconsistencies (null values).</p>
+            <p className="text-yellow-700">Clear unposted poems to re-scrape with new formatting.</p>
           </div>
         </div>
         
-        <div className="flex gap-4 flex-wrap">
-          <button
-            onClick={handleFixNullValues}
-            disabled={isProcessing.fix}
-            className={`
-              py-3 px-6 rounded-xl font-semibold transition-all duration-200
-              ${isProcessing.fix
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-yellow-600 text-white hover:bg-yellow-700'
-              }
-            `}
-          >
-            {isProcessing.fix ? 'Fixing...' : '🔧 Fix Database Issues'}
-          </button>
-
-          <button
-            onClick={handleClearUnused}
-            disabled={isProcessing.clear}
-            className={`
-              py-3 px-6 rounded-xl font-semibold transition-all duration-200
-              ${isProcessing.clear
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-red-600 text-white hover:bg-red-700'
-              }
-            `}
-          >
-            {isProcessing.clear ? 'Deleting...' : '🗑️ Clear Unused Poems'}
-          </button>
-        </div>
-
-        {fixStatus && (
-          <div className={`mt-4 p-3 rounded-xl ${fixStatus.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-            {fixStatus.success ? (
-              <div className="text-green-800">
-                <span className="font-semibold">✅ Fixed!</span>
-                <p className="text-sm mt-1">{fixStatus.message}</p>
-              </div>
-            ) : (
-              <div className="text-red-800">
-                <span className="font-semibold">❌ Error:</span>
-                <p className="text-sm mt-1">{fixStatus.error}</p>
-              </div>
-            )}
-          </div>
-        )}
+        <button
+          onClick={handleClearUnused}
+          disabled={isProcessing.clear}
+          className={`
+            py-3 px-6 rounded-xl font-semibold transition-all duration-200
+            ${isProcessing.clear
+              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              : 'bg-red-600 text-white hover:bg-red-700'
+            }
+          `}
+        >
+          {isProcessing.clear ? 'Deleting...' : '🗑️ Clear Unused Poems'}
+        </button>
 
         {clearStatus && (
           <div className={`mt-4 p-3 rounded-xl ${clearStatus.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>

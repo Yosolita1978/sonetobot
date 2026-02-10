@@ -18,10 +18,8 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
  */
 export async function insertPoems(poems: NewPoem[]): Promise<number> {
   try {
-    // ENSURE poems are inserted with used: false
     const poemsWithDefaults = poems.map(poem => ({
       ...poem,
-      used: false,  // EXPLICITLY set to false
       posted_date: null
     }));
 
@@ -42,15 +40,14 @@ export async function insertPoems(poems: NewPoem[]): Promise<number> {
 
 /**
  * Get a random unused poem from the database for posting
- * FIXED: Handle null values in used field
+ * Uses posted_date IS NULL to identify unposted poems
  */
 export async function getRandomUnusedPoem(): Promise<Poem | null> {
   try {
-    // FIXED: Check for both false AND null values (unused poems)
     const { count, error: countError } = await supabase
       .from('poems')
       .select('*', { count: 'exact', head: true })
-      .or('used.is.null,used.eq.false')  // This handles both null and false
+      .is('posted_date', null)
 
     if (countError) {
       throw new Error(`Failed to count unused poems: ${countError.message}`);
@@ -63,11 +60,10 @@ export async function getRandomUnusedPoem(): Promise<Poem | null> {
     // Generate a random offset
     const randomOffset = Math.floor(Math.random() * count);
 
-    // FIXED: Get one poem that is either null or false for used
     const { data, error } = await supabase
       .from('poems')
       .select('*')
-      .or('used.is.null,used.eq.false')  // This handles both null and false
+      .is('posted_date', null)
       .range(randomOffset, randomOffset)
       .limit(1);
 
@@ -126,10 +122,7 @@ export async function markPoemAsUsed(poemId: number): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('poems')
-      .update({ 
-        used: true, 
-        posted_date: new Date().toISOString()
-      })
+      .update({ posted_date: new Date().toISOString() })
       .eq('id', poemId)
 
     if (error) {
@@ -143,14 +136,13 @@ export async function markPoemAsUsed(poemId: number): Promise<boolean> {
 
 /**
  * Count unused poems in database
- * FIXED: Handle null values
  */
 export async function countUnusedPoems(): Promise<number> {
   try {
     const { count, error } = await supabase
       .from('poems')
       .select('*', { count: 'exact', head: true })
-      .or('used.is.null,used.eq.false')  // Count both null and false as unused
+      .is('posted_date', null)
 
     if (error) {
       throw new Error(`Failed to count unused poems: ${error.message}`)
@@ -199,29 +191,7 @@ export async function testDatabaseConnection(): Promise<boolean> {
 }
 
 /**
- * Fix all existing poems with null used values
- * Call this once to clean up your database
- */
-export async function fixNullUsedValues(): Promise<number> {
-  try {
-    const { data, error } = await supabase
-      .from('poems')
-      .update({ used: false })
-      .is('used', null)
-      .select('id')
-
-    if (error) {
-      throw new Error(`Failed to fix null used values: ${error.message}`)
-    }
-
-    return data?.length || 0
-  } catch (error) {
-    throw error
-  }
-}
-
-/**
- * Delete all unused poems (used = false or null)
+ * Delete all unposted poems (posted_date is null)
  * Used to clear badly-formatted poems before re-scraping
  */
 export async function deleteUnusedPoems(): Promise<number> {
@@ -229,7 +199,7 @@ export async function deleteUnusedPoems(): Promise<number> {
     const { data, error } = await supabase
       .from('poems')
       .delete()
-      .or('used.is.null,used.eq.false')
+      .is('posted_date', null)
       .select('id')
 
     if (error) {

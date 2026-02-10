@@ -10,7 +10,6 @@ export interface Poem {
     author: string;                // Poet's name
     excerpt: string;               // The poem text/excerpt
     scraped_date: string;          // ISO date string from database
-    used: boolean;                 // Whether this poem has been posted
     posted_date: string | null;    // ISO date string when posted, null if not posted
   }
   
@@ -23,7 +22,6 @@ export interface Poem {
     author: string;
     excerpt: string;
     scraped_date: string;          // ISO date string
-    used?: boolean;                // Optional, defaults to false
   }
   
   /**
