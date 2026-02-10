@@ -39,14 +39,23 @@ export async function GET() {
 
     const posts = await statusesResponse.json();
 
-    // Format posts for public display
-    const formattedPosts = posts.map((post: MastodonPostApi) => ({
-      id: post.id,
-      content: decodeHtmlEntities(post.content.replace(/<[^>]*>/g, '')),
-      url: post.url,
-      created_at: post.created_at,
-      poemTitle: extractPoemTitle(post.content)
-    }));
+    // Format posts for public display — preserve line breaks from HTML
+    const formattedPosts = posts.map((post: MastodonPostApi) => {
+      // Mastodon wraps lines in <p> tags and uses <br> for line breaks
+      let text = post.content;
+      text = text.replace(/<br\s*\/?>/gi, '\n');       // <br> → newline
+      text = text.replace(/<\/p>\s*<p>/gi, '\n\n');    // </p><p> → stanza break
+      text = text.replace(/<[^>]*>/g, '');              // strip remaining tags
+      text = decodeHtmlEntities(text).trim();
+
+      return {
+        id: post.id,
+        content: text,
+        url: post.url,
+        created_at: post.created_at,
+        poemTitle: extractPoemTitle(post.content)
+      };
+    });
 
     return NextResponse.json({
       success: true,

@@ -78,10 +78,11 @@ export function MastodonPostsSection() {
                   </div>
                 </div>
                 <div className="mb-4">
-                  <p className="text-[#303162] line-clamp-3">
-                    {post.content.substring(0, 200)}
-                    {post.content.length > 200 ? '...' : ''}
-                  </p>
+                  <pre className="text-[#303162] font-serif text-base leading-relaxed whitespace-pre-wrap">
+                    {post.content.length > 300
+                      ? post.content.substring(0, post.content.lastIndexOf('\n', 300)) + '\n...'
+                      : post.content}
+                  </pre>
                 </div>
                 <div className="flex items-center justify-between">
                   <a
