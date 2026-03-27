@@ -122,7 +122,7 @@ export async function markPoemAsUsed(poemId: number): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('poems')
-      .update({ posted_date: new Date().toISOString() })
+      .update({ posted_date: new Date().toISOString(), used: true })
       .eq('id', poemId)
 
     if (error) {

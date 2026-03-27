@@ -12,21 +12,21 @@ export async function GET() {
       throw new Error(`Failed to count total poems: ${totalError.message}`)
     }
 
-    // Get posted poems count
+    // Get posted poems count (poems that have a posted_date)
     const { count: postedPoems, error: postedError } = await supabase
       .from('poems')
       .select('*', { count: 'exact', head: true })
-      .eq('used', true)
+      .not('posted_date', 'is', null)
 
     if (postedError) {
       throw new Error(`Failed to count posted poems: ${postedError.message}`)
     }
 
-    // Get unused poems count
+    // Get unused poems count (poems without a posted_date)
     const { count: unusedPoems, error: unusedError } = await supabase
       .from('poems')
       .select('*', { count: 'exact', head: true })
-      .or('used.is.null,used.eq.false')
+      .is('posted_date', null)
 
     if (unusedError) {
       throw new Error(`Failed to count unused poems: ${unusedError.message}`)
@@ -36,7 +36,6 @@ export async function GET() {
     const { data: recentPoem, error: recentError } = await supabase
       .from('poems')
       .select('posted_date')
-      .eq('used', true)
       .not('posted_date', 'is', null)
       .order('posted_date', { ascending: false })
       .limit(1)
