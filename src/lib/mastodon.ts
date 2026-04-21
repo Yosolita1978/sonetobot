@@ -6,6 +6,7 @@ const MASTODON_MAX_CHARS = 500
 // Truncate poem excerpt to fit within the character budget, cutting at complete lines
 export function reformatAsSonnet(excerpt: string, maxChars: number): string {
   if (!excerpt) return '';
+  if (maxChars <= 0) return '';
 
   // Clean up: max 2 consecutive line breaks, trim
   const text = excerpt
@@ -14,18 +15,20 @@ export function reformatAsSonnet(excerpt: string, maxChars: number): string {
 
   if (text.length <= maxChars) return text;
 
-  // Truncate at the last complete line that fits
+  // Truncate at the last complete line that fits. Reserve space for "\n..." (4 chars).
+  const suffix = '\n...';
   const lines = text.split('\n');
   let result = '';
 
   for (const line of lines) {
     const candidate = result ? `${result}\n${line}` : line;
-    // Reserve 3 chars for the "..." suffix
-    if (candidate.length > maxChars - 3) break;
+    if (candidate.length > maxChars - suffix.length) break;
     result = candidate;
   }
 
-  return result ? `${result}\n...` : text.slice(0, maxChars - 3) + '...';
+  if (result) return `${result}${suffix}`;
+  // Fallback: first line alone is too long — hard-truncate at character level
+  return text.slice(0, Math.max(0, maxChars - 3)) + '...';
 }
 
 function formatPoemForPost(poem: Poem): string {
@@ -38,7 +41,14 @@ function formatPoemForPost(poem: Poem): string {
 
   const formattedExcerpt = reformatAsSonnet(poem.excerpt, excerptBudget);
 
-  return `${header}${formattedExcerpt}${footer}`;
+  let postContent = `${header}${formattedExcerpt}${footer}`;
+
+  // Safety net: never send more than the Mastodon limit, even if something slipped through.
+  if (postContent.length > MASTODON_MAX_CHARS) {
+    postContent = postContent.slice(0, MASTODON_MAX_CHARS - 3) + '...';
+  }
+
+  return postContent;
 }
 
 export async function postPoem(): Promise<{
