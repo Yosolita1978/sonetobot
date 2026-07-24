@@ -82,6 +82,9 @@ async function discoverPoemLinks(): Promise<Array<{ url: string; title: string; 
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SonetoBot/1.0)' }
   })
 
+  // NOTE: the listing page really is served as UTF-8, so we let axios decode
+  // it. This is DIFFERENT from the individual poem pages, which are Latin-1
+  // (see fetchPoemText). Don't switch this to latin1 or titles break.
   const html: string = response.data
   const poems: Array<{ url: string; title: string; author: string }> = []
 
@@ -118,10 +121,14 @@ async function fetchPoemText(url: string): Promise<string | null> {
   try {
     const response = await axios.get(url, {
       timeout: 15000,
+      responseType: 'arraybuffer',
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SonetoBot/1.0)' }
     })
 
-    const html: string = response.data
+    // Individual poem pages declare charset=UTF-8 but actually serve
+    // ISO-8859-1 (Latin-1) bytes, so we fetch raw bytes and decode them as
+    // latin1 ourselves. (The listing page in discoverPoemLinks really is UTF-8.)
+    const html: string = Buffer.from(response.data).toString('latin1')
 
     // Extract poem content from <p class="ContTextod"...>...</p>
     const poemMatch = html.match(/<p\s+class="ContTextod"[^>]*>([\s\S]*?)<\/p>/i)
