@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth-config'
 import { getRandomPoem, insertPoems, deleteUnusedPoems } from '@/lib/supabase'
 import { scrapePoems } from '@/lib/scraper'
-import { reformatAsSonnet } from '@/lib/mastodon'
+import { formatPoemForPost } from '@/lib/mastodon'
 import { NewPoem } from '@/types/poem'
 
 export async function POST(request: Request) {
@@ -33,12 +33,8 @@ export async function POST(request: Request) {
 
         const freshPoem = freshPoems[0]; // Get the first freshly scraped poem
 
-        // Format complete Mastodon post with title, author, hashtags
-        const header = `«${freshPoem.title}»\n\n`;
-        const footer = `\n\n— ${freshPoem.author}\n\n#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura`;
-        const excerptBudget = 500 - header.length - footer.length;
-        const formattedExcerpt = reformatAsSonnet(freshPoem.excerpt, excerptBudget);
-        const mastodonPost = `${header}${formattedExcerpt}${footer}`;
+        // Format the complete Mastodon post exactly as it will be posted
+        const mastodonPost = formatPoemForPost(freshPoem);
 
         return NextResponse.json({
           success: true,

@@ -127,8 +127,32 @@ async function discoverPoemLinks(): Promise<Array<{ url: string; title: string; 
   return poems
 }
 
-// Fetch a single poem's text from its individual page
-async function fetchPoemText(url: string): Promise<string | null> {
+// The listing URL has the author without accents ("Sara de Ibanez"), while the
+// poem page shows it in capitals with accents ("SARA DE IBÁÑEZ"). Take the
+// letters from the page and the capitalization from the URL. If the two names
+// don't match letter for letter, keep the URL version.
+function addAccentsToAuthor(urlAuthor: string, pageAuthor: string | null): string {
+  if (!pageAuthor) return urlAuthor
+
+  const page = pageAuthor.normalize('NFC').replace(/\s+/g, ' ').trim()
+  const stripAccents = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+  if (page.length !== urlAuthor.length || stripAccents(page) !== stripAccents(urlAuthor)) {
+    return urlAuthor
+  }
+
+  let result = ''
+  for (let i = 0; i < page.length; i++) {
+    const urlChar = urlAuthor[i]
+    const isUpper = urlChar !== urlChar.toLowerCase()
+    result += isUpper ? page[i].toUpperCase() : page[i].toLowerCase()
+  }
+
+  return result.length === urlAuthor.length ? result : urlAuthor
+}
+
+// Fetch a single poem's page and extract its text and the author's name
+async function fetchPoemPage(url: string): Promise<{ excerpt: string; pageAuthor: string | null } | null> {
   try {
     const response = await axios.get(url, {
       timeout: 15000,
@@ -139,14 +163,21 @@ async function fetchPoemText(url: string): Promise<string | null> {
     // Fetch raw bytes and pick the right encoding per page (see decodeHtml).
     const html: string = decodeHtml(response.data)
 
-    // Extract poem content from <p class="ContTextod"...>...</p>
-    const poemMatch = html.match(/<p\s+class="ContTextod"[^>]*>([\s\S]*?)<\/p>/i)
-    if (!poemMatch) return null
+    // Some pages have a dedication or epigraph in its own <p class="ContTextod">
+    // block before the poem, so collect every block and join them.
+    const blocks = [...html.matchAll(/<p\s+class="ContTextod"[^>]*>([\s\S]*?)<\/p>/gi)]
+      .map(match => cleanPoemHtml(match[1]))
+      .filter(text => text.length > 0)
+    if (blocks.length === 0) return null
 
-    const poemText = cleanPoemHtml(poemMatch[1])
-    const cleaned = stripAttribution(poemText)
+    const cleaned = stripAttribution(blocks.join('\n\n'))
+    if (cleaned.length <= 20) return null
 
-    return cleaned.length > 20 ? cleaned : null
+    // Author appears below the poem as: <p ... class="ContTitulob"><i>SARA DE IBÁÑEZ</i></p>
+    const authorMatch = html.match(/class="ContTitulob"[^>]*>\s*<i>([\s\S]*?)<\/i>/i)
+    const pageAuthor = authorMatch ? cleanRawText(authorMatch[1]) : null
+
+    return { excerpt: cleaned, pageAuthor }
   } catch (error) {
     console.error(`Failed to fetch poem from ${url}:`, error)
     return null
@@ -171,13 +202,14 @@ export async function scrapePoems(): Promise<ScrapedPoem[]> {
     const poems: ScrapedPoem[] = []
 
     for (const link of selected) {
-      const excerpt = await fetchPoemText(link.url)
+      const page = await fetchPoemPage(link.url)
 
-      if (excerpt) {
+      if (page) {
         poems.push({
           title: link.title,
-          author: link.author,
-          excerpt
+          author: addAccentsToAuthor(link.author, page.pageAuthor),
+          excerpt: page.excerpt,
+          url: link.url
         })
       }
 

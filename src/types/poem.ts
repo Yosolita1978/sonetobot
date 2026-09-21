@@ -9,6 +9,7 @@ export interface Poem {
     title: string;                 // Poem title
     author: string;                // Poet's name
     excerpt: string;               // The poem text/excerpt
+    url: string | null;            // Source page of the poem, null for older poems
     scraped_date: string;          // ISO date string from database
     posted_date: string | null;    // ISO date string when posted, null if not posted
   }
@@ -21,6 +22,7 @@ export interface Poem {
     title: string;
     author: string;
     excerpt: string;
+    url: string;
     scraped_date: string;          // ISO date string
   }
   
@@ -32,6 +34,7 @@ export interface Poem {
     title: string;
     author: string;
     excerpt: string;
+    url: string;
   }
   
   /**

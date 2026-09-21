@@ -31,24 +31,47 @@ export function reformatAsSonnet(excerpt: string, maxChars: number): string {
   return text.slice(0, Math.max(0, maxChars - 3)) + '...';
 }
 
-function formatPoemForPost(poem: Poem): string {
+// Mastodon counts every link as 23 characters, whatever its real length
+const MASTODON_URL_LENGTH = 23
+
+const HASHTAGS = '#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura'
+
+// "Sara de Ibáñez" -> "#SaraDeIbáñez"
+function authorHashtag(author: string): string {
+  const words = author.split(/\s+/).filter(word => word.length > 0)
+  const joined = words
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+    .replace(/[^\p{L}\p{N}]/gu, '')
+  return joined ? `#${joined}` : ''
+}
+
+type PostablePoem = Pick<Poem, 'title' | 'author' | 'excerpt' | 'url'>
+
+export function formatPoemForPost(poem: PostablePoem): string {
   const header = `«${poem.title}»\n\n`;
-  const footer = `\n\n— ${poem.author}\n\n#PoesíaEspañola #Poesía #Spanish #Poetry #Literatura`;
+
+  const linkLine = poem.url ? `\n\nPoema completo: ${poem.url}` : '';
+  const tags = [authorHashtag(poem.author), HASHTAGS].filter(tag => tag).join(' ');
+  const footer = `\n\n— ${poem.author}${linkLine}\n\n${tags}`;
+
+  // Length of the footer as Mastodon counts it (the link counts as 23 chars)
+  const footerCountedLength = poem.url
+    ? footer.length - poem.url.length + MASTODON_URL_LENGTH
+    : footer.length;
 
   // Calculate how much space the excerpt can use
-  const overhead = header.length + footer.length;
-  const excerptBudget = MASTODON_MAX_CHARS - overhead;
+  const excerptBudget = MASTODON_MAX_CHARS - header.length - footerCountedLength;
 
-  const formattedExcerpt = reformatAsSonnet(poem.excerpt, excerptBudget);
-
-  let postContent = `${header}${formattedExcerpt}${footer}`;
+  let formattedExcerpt = reformatAsSonnet(poem.excerpt, excerptBudget);
 
   // Safety net: never send more than the Mastodon limit, even if something slipped through.
-  if (postContent.length > MASTODON_MAX_CHARS) {
-    postContent = postContent.slice(0, MASTODON_MAX_CHARS - 3) + '...';
+  // Trim the excerpt (not the whole post) so the link and hashtags stay intact.
+  if (formattedExcerpt.length > excerptBudget) {
+    formattedExcerpt = formattedExcerpt.slice(0, Math.max(0, excerptBudget - 3)) + '...';
   }
 
-  return postContent;
+  return `${header}${formattedExcerpt}${footer}`;
 }
 
 export async function postPoem(): Promise<{
