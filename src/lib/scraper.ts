@@ -70,6 +70,17 @@ function stripAttribution(text: string): string {
   return lines.join('\n').trim()
 }
 
+// Poem pages all declare charset=UTF-8, but some are really UTF-8 and others
+// are really ISO-8859-1 (Latin-1). Try strict UTF-8 first (it throws on
+// invalid bytes), and fall back to Latin-1 when it fails.
+function decodeHtml(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return Buffer.from(bytes).toString('latin1')
+  }
+}
+
 // Small delay helper for rate limiting
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -83,8 +94,8 @@ async function discoverPoemLinks(): Promise<Array<{ url: string; title: string; 
   })
 
   // NOTE: the listing page really is served as UTF-8, so we let axios decode
-  // it. This is DIFFERENT from the individual poem pages, which are Latin-1
-  // (see fetchPoemText). Don't switch this to latin1 or titles break.
+  // it. Individual poem pages are mixed UTF-8 / Latin-1 (see decodeHtml).
+  // Don't switch this to latin1 or titles break.
   const html: string = response.data
   const poems: Array<{ url: string; title: string; author: string }> = []
 
@@ -125,10 +136,8 @@ async function fetchPoemText(url: string): Promise<string | null> {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SonetoBot/1.0)' }
     })
 
-    // Individual poem pages declare charset=UTF-8 but actually serve
-    // ISO-8859-1 (Latin-1) bytes, so we fetch raw bytes and decode them as
-    // latin1 ourselves. (The listing page in discoverPoemLinks really is UTF-8.)
-    const html: string = Buffer.from(response.data).toString('latin1')
+    // Fetch raw bytes and pick the right encoding per page (see decodeHtml).
+    const html: string = decodeHtml(response.data)
 
     // Extract poem content from <p class="ContTextod"...>...</p>
     const poemMatch = html.match(/<p\s+class="ContTextod"[^>]*>([\s\S]*?)<\/p>/i)
