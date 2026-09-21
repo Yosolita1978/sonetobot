@@ -26,6 +26,9 @@ export const authOptions: NextAuthOptions = {
     GitHubProvider({
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!,
+      // GitHub now returns an `iss` param on the OAuth callback (RFC 9207),
+      // so the issuer must be set or the token exchange fails.
+      issuer: "https://github.com/login/oauth",
     })
   ],
   // NextAuth.js callbacks
